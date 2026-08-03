@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maasa Group - GST & Tax Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #0070f3;
+            text-align: center;
+            font-size: 24px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #0070f3;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0051a2;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #eef6ff;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Maasa Group - Tax & GST Tracker</h1>
+        
+        <div class="form-group">
+            <label for="dailyIncome">Daily Income / Salary ($):</label>
+            <input type="number" id="dailyIncome" placeholder="e.g. 200">
+        </div>
+
+        <div class="form-group">
+            <label for="dailyExpense">Daily Expenses ($):</label>
+            <input type="number" id="dailyExpense" placeholder="e.g. 50">
+        </div>
+
+        <button onclick="calculateTax()">Calculate</button>
+
+        <div class="result" id="resultBox" style="display:none;">
+            <h3>Report:</h3>
+            <p id="netIncome"></p>
+            <p id="quarterlyGST"></p>
+            <p id="yearlyTax"></p>
+        </div>
+    </div>
+
+    <script>
+        function calculateTax() {
+            let income = parseFloat(document.getElementById('dailyIncome').value) || 0;
+            let expense = parseFloat(document.getElementById('dailyExpense').value) || 0;
+
+            let monthlyIncome = income * 30;
+            let monthlyExpense = expense * 30;
+            let netMonthly = monthlyIncome - monthlyExpense;
+
+            let quarterlyGST = netMonthly * 3 * 0.10;
+            let yearlyNet = netMonthly * 12;
+            let estimatedYearlyTax = yearlyNet > 18200 ? (yearlyNet - 18200) * 0.19 : 0;
+
+            let resultBox = document.getElementById('resultBox');
+            resultBox.style.display = 'block';
+
+            document.getElementById('netIncome').innerText = "Net Monthly Savings: $" + netMonthly.toFixed(2);
+            document.getElementById('quarterlyGST').innerText = "Quarterly GST Estimate: $" + quarterlyGST.toFixed(2);
+            document.getElementById('yearlyTax').innerText = "Yearly Tax Estimate: $" + estimatedYearlyTax.toFixed(2);
+        }
+    </script>
+
+</body>
+</html>
