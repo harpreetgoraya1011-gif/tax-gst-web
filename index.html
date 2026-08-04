@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Maasa Accountant Workspace - Clean Ledger</title>
+    <title>Maasa Accountant Workspace - Fresh Reset</title>
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -14,9 +14,11 @@
 
     <script type="text/babel">
         function App() {
-            // Using a brand new storage key to completely avoid old corrupted cached data
+            // Force clean start: Automatically wipe old cached data if detected
             const [transactions, setTransactions] = React.useState(() => {
-                const saved = localStorage.getItem('maasa_clean_ledger_v5');
+                localStorage.removeItem('maasa_pro_ledger_v4');
+                localStorage.removeItem('maasa_clean_ledger_v5');
+                const saved = localStorage.getItem('maasa_absolute_fresh_v6');
                 return saved ? JSON.parse(saved) : [];
             });
             
@@ -29,17 +31,13 @@
             const [extraDesc, setExtraDesc] = React.useState('');
 
             React.useEffect(() => {
-                localStorage.setItem('maasa_clean_ledger_v5', JSON.stringify(transactions));
+                localStorage.setItem('maasa_absolute_fresh_v6', JSON.stringify(transactions));
             }, [transactions]);
 
-            // Hard Reset / Wipe Everything Instantly
             const hardResetLedger = () => {
-                if (confirm('⚠️ Warning: This will instantly wipe all records and reset everything to $0.00. Proceed?')) {
-                    setTransactions([]);
-                    localStorage.removeItem('maasa_clean_ledger_v5');
-                    localStorage.clear();
-                    window.location.reload();
-                }
+                setTransactions([]);
+                localStorage.clear();
+                window.location.reload();
             };
 
             const handleManualSubmit = (e) => {
@@ -55,7 +53,6 @@
                     desc,
                     amount: Math.abs(numAmt),
                     type: isInc ? 'income' : 'expense',
-                    gstCode: 'GST',
                     date: new Date().toISOString().split('T')[0],
                     source: 'manual'
                 };
@@ -76,7 +73,6 @@
                     desc: extraDesc,
                     amount: parseFloat(extraIncome),
                     type: 'income',
-                    gstCode: 'GST',
                     date: new Date().toISOString().split('T')[0],
                     source: 'added_manually'
                 };
@@ -117,17 +113,6 @@
                             }
                         });
 
-                        if (foundAmount === null && cols.length >= 2) {
-                            for (let i = 0; i < cols.length; i++) {
-                                const val = parseFloat(cols[i].replace('$', '').replace(',', ''));
-                                if (!isNaN(val) && cols[i].includes('.')) {
-                                    foundAmount = val;
-                                    foundDesc = cols[i+1] || cols[i-1] || 'Bank Transaction';
-                                    break;
-                                }
-                            }
-                        }
-
                         if (foundAmount !== null && !isNaN(foundAmount) && Math.abs(foundAmount) < 50000) {
                             const lowerDesc = (foundDesc || '').toLowerCase();
                             if (lowerDesc.includes('amount') || lowerDesc.includes('balance') || lowerDesc.includes('date') || lowerDesc.includes('narration')) return;
@@ -136,10 +121,9 @@
 
                             newTxs.push({
                                 id: Date.now() + index,
-                                desc: foundDesc || 'Bank Statement Item',
+                                desc: foundDesc || 'Bank Transaction',
                                 amount: Math.abs(foundAmount),
                                 type: isIncome ? 'income' : 'expense',
-                                gstCode: 'GST',
                                 date: foundDate || new Date().toISOString().split('T')[0],
                                 source: 'csv'
                             });
@@ -184,14 +168,14 @@
                         <div className="flex justify-between items-center mb-2">
                             <div>
                                 <h1 className="text-sm font-black text-blue-700">Maasa Accountant Workspace</h1>
-                                <p className="text-[10px] text-gray-400">Clean Ledger & Reset System</p>
+                                <p className="text-[10px] text-gray-400">Fresh Zero State System</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button 
                                     onClick={hardResetLedger} 
                                     className="bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm"
                                 >
-                                    Wipe All ($0)
+                                    Force Reset ($0)
                                 </button>
                                 <select 
                                     value={mode} 
@@ -233,7 +217,7 @@
                             </div>
 
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                                <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Entry Manually</h2>
+                                <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Entry Manually (Auto-Detect)</h2>
                                 <form onSubmit={handleManualSubmit} className="space-y-3">
                                     <input 
                                         type="text" 
@@ -253,7 +237,7 @@
                                         required
                                     />
                                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
-                                        Save Entry
+                                        Save & Auto-Detect
                                     </button>
                                 </form>
                             </div>
@@ -266,7 +250,7 @@
                                     )}
                                 </div>
                                 {transactions.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-6">Ledger is empty ($0.00). Upload CSV or add records.</p>
+                                    <p className="text-xs text-gray-400 text-center py-6">Ledger is clean ($0.00). Upload CSV or add records.</p>
                                 ) : (
                                     <div className="space-y-2 max-h-96 overflow-y-auto">
                                         {transactions.map((t) => (
@@ -290,7 +274,7 @@
                     ) : (
                         <div>
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                                <h2 className="text-xs font-bold text-blue-700 uppercase mb-2">📋 Accountant Report</h2>
+                                <h2 className="text-xs font-bold text-blue-700 uppercase mb-2">📋 Accountant Report & Confirmation</h2>
                                 <div className="space-y-3 bg-gray-50 p-3 rounded-xl border mb-4 text-xs">
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Total Income:</span>
@@ -319,7 +303,7 @@
                                         value={extraDesc} 
                                         onChange={(e) => setExtraDesc(e.target.value)} 
                                         placeholder="Income source (e.g. Additional Salary)" 
-                                        className="w-full border rounded-xl p.5 text-xs bg-gray-50 p-2.5"
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
                                     />
                                     <input 
                                         type="number" 
@@ -327,7 +311,7 @@
                                         value={extraIncome} 
                                         onChange={(e) => setExtraIncome(e.target.value)} 
                                         placeholder="Amount ($)" 
-                                        className="w-full border rounded-xl p.5 text-xs bg-gray-50 p-2.5"
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
                                     />
                                     <button onClick={addExtraIncomeEntry} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
                                         Add Missing Income
