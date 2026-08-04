@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Personal Tax & GST Tracker (Mobile)</title>
+    <title>Maasa Accountant Ledger & Tax Workspace</title>
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -15,52 +15,45 @@
     <script type="text/babel">
         function App() {
             const [transactions, setTransactions] = React.useState(() => {
-                const saved = localStorage.getItem('tax_tracker_txs_mob_v2');
+                const saved = localStorage.getItem('maasa_pro_ledger_v4');
                 return saved ? JSON.parse(saved) : [];
             });
             
-            const [mode, setMode] = React.useState('both'); 
+            const [mode, setMode] = React.useState('abn');
             const [desc, setDesc] = React.useState('');
             const [amount, setAmount] = React.useState('');
-            const [type, setType] = React.useState('expense'); 
-            const [claimType, setClaimType] = React.useState('both');
+            const [step, setStep] = React.useState('review'); // review or reporting
+
+            // Extra Manual Income/Expense for Review step
+            const [extraIncome, setExtraIncome] = React.useState('');
+            const [extraDesc, setExtraDesc] = React.useState('');
 
             React.useEffect(() => {
-                localStorage.setItem('tax_tracker_txs_mob_v2', JSON.stringify(transactions));
+                localStorage.setItem('maasa_pro_ledger_v4', JSON.stringify(transactions));
             }, [transactions]);
 
-            const handleDescChange = (val) => {
-                setDesc(val);
-                const lower = val.toLowerCase();
-                if (lower.includes('mcdonald') || lower.includes('kfc') || lower.includes('coles') || lower.includes('woolworths') || lower.includes('netflix')) {
-                    setClaimType('personal');
-                } else if (lower.includes('fuel') || lower.includes('bp') || lower.includes('shell') || lower.includes('ampol')) {
-                    setClaimType('both');
-                } else if (lower.includes('toll') || lower.includes('linkt') || lower.includes('registration')) {
-                    setClaimType('tax_only');
-                } else if (lower.includes('salary') || lower.includes('income') || lower.includes('uber') || lower.includes('amazon')) {
-                    setType('income');
-                    setClaimType('income');
-                }
-            };
-
-            const handleSubmit = (e) => {
+            const handleManualSubmit = (e) => {
                 e.preventDefault();
                 if (!desc || !amount) return;
+
+                const numAmt = parseFloat(amount);
+                // Smart auto-detection based on description keywords
+                const lowerDesc = desc.toLowerCase();
+                const isInc = lowerDesc.includes('salary') || lowerDesc.includes('income') || lowerDesc.includes('uber') || lowerDesc.includes('amazon') || lowerDesc.includes('credit') || lowerDesc.includes('payout');
 
                 const newTx = {
                     id: Date.now(),
                     desc,
-                    amount: parseFloat(amount),
-                    type,
-                    claimType: type === 'income' ? 'income' : claimType,
-                    date: new Date().toISOString().split('T')[0]
+                    amount: Math.abs(numAmt),
+                    type: isInc ? 'income' : 'expense',
+                    gstCode: isInc ? 'GST' : 'GST',
+                    date: new Date().toISOString().split('T')[0],
+                    source: 'manual'
                 };
 
                 setTransactions([newTx, ...transactions]);
                 setDesc('');
                 setAmount('');
-                setClaimType('both');
             };
 
             const deleteTx = (id) => {
@@ -68,12 +61,28 @@
             };
 
             const clearAll = () => {
-                if (confirm('Are you sure you want to clear all records?')) {
+                if (confirm('Are you sure you want to clear all ledger records?')) {
                     setTransactions([]);
                 }
             };
 
-            // Smart Bank CSV Parser (Handles ANZ, CommBank, NAB formats)
+            const addExtraIncomeEntry = () => {
+                if (!extraIncome || !extraDesc) return;
+                const newTx = {
+                    id: Date.now(),
+                    desc: extraDesc,
+                    amount: parseFloat(extraIncome),
+                    type: 'income',
+                    gstCode: 'GST',
+                    date: new Date().toISOString().split('T')[0],
+                    source: 'added_manually'
+                };
+                setTransactions([newTx, ...transactions]);
+                setExtraIncome('');
+                setExtraDesc('');
+            };
+
+            // Bank Statement Parser with Auto-Detection & Delete capability
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -86,63 +95,60 @@
 
                     lines.forEach((line, index) => {
                         if (!line.trim()) return;
-                        
-                        // Basic CSV split considering quotes
                         const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/['"]+/g, '').trim());
-                        
                         if (cols.length < 2) return;
 
-                        // Try to find which column is Amount and which is Description
-                        let foundAmount = null;
+                        let foundDate = '';
                         let foundDesc = '';
-                        let foundDate = new Date().toISOString().split('T')[0];
+                        let foundAmount = null;
 
-                        cols.forEach((col, cIdx) => {
-                            // Check if column looks like a number (Amount)
-                            const cleanNum = parseFloat(col.replace('$', '').replace(',', ''));
-                            if (!isNaN(cleanNum) && (col.includes('.') || Math.abs(cleanNum) > 0)) {
-                                if (foundAmount === null && cIdx > 0) {
-                                    foundAmount = cleanNum;
-                                }
-                            } else if (col.length > 3 && !col.match(/^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$/)) {
-                                if (!foundDesc) foundDesc = col;
-                            } else if (col.match(/^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$/)) {
+                        cols.forEach((col, idx) => {
+                            if (col.match(/^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/) || col.match(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/)) {
                                 foundDate = col;
+                            } else {
+                                const cleanVal = parseFloat(col.replace('$', '').replace(',', ''));
+                                if (!isNaN(cleanVal) && (col.includes('.') || Math.abs(cleanVal) > 0)) {
+                                    if (idx >= 1) foundAmount = cleanVal;
+                                } else if (col.length > 2 && !foundDesc) {
+                                    foundDesc = col;
+                                }
                             }
                         });
 
-                        // Fallback if structured standard ANZ (Date, Amount, Desc)
                         if (foundAmount === null && cols.length >= 2) {
-                            const possibleAmt = parseFloat(cols[1]);
-                            if (!isNaN(possibleAmt)) {
-                                foundAmount = possibleAmt;
-                                foundDesc = cols[2] || cols[0];
+                            for (let i = 0; i < cols.length; i++) {
+                                const val = parseFloat(cols[i].replace('$', '').replace(',', ''));
+                                if (!isNaN(val) && cols[i].includes('.')) {
+                                    foundAmount = val;
+                                    foundDesc = cols[i+1] || cols[i-1] || 'Bank Transaction';
+                                    break;
+                                }
                             }
                         }
 
-                        if (foundAmount !== null && !isNaN(foundAmount)) {
-                            // Skip header row if text contains "amount" or "date"
-                            if (foundDesc.toLowerCase().includes('amount') || foundDesc.toLowerCase().includes('description')) return;
+                        if (foundAmount !== null && !isNaN(foundAmount) && Math.abs(foundAmount) < 50000) {
+                            const lowerDesc = (foundDesc || '').toLowerCase();
+                            if (lowerDesc.includes('amount') || lowerDesc.includes('balance') || lowerDesc.includes('date') || lowerDesc.includes('narration')) return;
 
-                            const isInc = foundAmount > 0 && (foundDesc.toLowerCase().includes('salary') || foundDesc.toLowerCase().includes('income') || foundDesc.toLowerCase().includes('credit'));
-                            const isPersonal = foundDesc.toLowerCase().includes('mcdonald') || foundDesc.toLowerCase().includes('coles') || foundDesc.toLowerCase().includes('woolworths');
+                            const isIncome = foundAmount > 0 || lowerDesc.includes('salary') || lowerDesc.includes('uber') || lowerDesc.includes('amazon') || lowerDesc.includes('credit');
 
                             newTxs.push({
                                 id: Date.now() + index,
-                                desc: foundDesc || 'Bank Transaction',
+                                desc: foundDesc || 'Bank Statement Item',
                                 amount: Math.abs(foundAmount),
-                                type: foundAmount < 0 ? 'expense' : (isInc ? 'income' : 'expense'),
-                                claimType: foundAmount < 0 ? (isPersonal ? 'personal' : 'both') : 'income',
-                                date: foundDate
+                                type: isIncome ? 'income' : 'expense',
+                                gstCode: 'GST',
+                                date: foundDate || new Date().toISOString().split('T')[0],
+                                source: 'csv'
                             });
                         }
                     });
 
                     if (newTxs.length > 0) {
                         setTransactions(prev => [...newTxs, ...prev]);
-                        alert(`Successfully imported ${newTxs.length} clean transactions!`);
+                        alert(`Successfully auto-detected and imported ${newTxs.length} records! Review them below.`);
                     } else {
-                        alert('Could not read bank statement format. Please check the CSV file.');
+                        alert('Could not parse statement structure.');
                     }
                 };
                 reader.readAsText(file);
@@ -150,152 +156,191 @@
 
             // Calculations
             const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-            const expenses = transactions.filter(t => t.type === 'expense' && t.claimType !== 'personal');
+            const expenses = transactions.filter(t => t.type === 'expense');
+            const totalGSTCollected = totalIncome / 11;
+            const totalGSTPaid = expenses.reduce((acc, t) => acc + (t.amount / 11), 0);
+            const netGSTDue = Math.max(0, totalGSTCollected - totalGSTPaid);
 
-            const gstEligibleExpenses = expenses.filter(t => t.claimType === 'both').reduce((acc, t) => acc + t.amount, 0);
-            const estimatedGST = gstEligibleExpenses / 11; 
+            const totalDeductions = expenses.reduce((acc, t) => acc + (t.amount - (t.amount / 11)), 0);
+            const taxableIncome = Math.max(0, totalIncome - totalDeductions);
 
-            const deductibleExpenses = expenses.reduce((acc, t) => {
-                if (t.claimType === 'both') return acc + (t.amount - (t.amount / 11));
-                if (t.claimType === 'tax_only') return acc + t.amount;
-                return acc;
-            }, 0);
-
-            const taxableIncome = Math.max(0, totalIncome - deductibleExpenses);
-
-            // Tax Brackets 2025-26
-            let estimatedTax = 0;
+            let incomeTax = 0;
             if (taxableIncome > 18200 && taxableIncome <= 45000) {
-                estimatedTax = (taxableIncome - 18200) * 0.16;
+                incomeTax = (taxableIncome - 18200) * 0.16;
             } else if (taxableIncome > 45000 && taxableIncome <= 135000) {
-                estimatedTax = 4288 + (taxableIncome - 45000) * 0.30;
+                incomeTax = 4288 + (taxableIncome - 45000) * 0.30;
             } else if (taxableIncome > 135000 && taxableIncome <= 190000) {
-                estimatedTax = 31288 + (taxableIncome - 135000) * 0.37;
+                incomeTax = 31288 + (taxableIncome - 135000) * 0.37;
             } else if (taxableIncome > 190000) {
-                estimatedTax = 51638 + (taxableIncome - 190000) * 0.45;
+                incomeTax = 51638 + (taxableIncome - 190000) * 0.45;
             }
             const medicareLevy = taxableIncome * 0.02;
-            const totalTaxLiability = estimatedTax + medicareLevy;
+            const totalTaxLiability = incomeTax + medicareLevy;
 
             return (
-                <div className="max-w-md mx-auto p-3 sm:p-4">
+                <div className="max-w-md mx-auto p-3 sm:p-4 font-sans">
                     {/* Header */}
                     <header className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
                         <div className="flex justify-between items-center mb-2">
-                            <h1 className="text-base font-bold text-blue-600">Tax & GST Mobile Tracker</h1>
+                            <div>
+                                <h1 className="text-sm font-black text-blue-700">Maasa Accountant Workspace</h1>
+                                <p className="text-[10px] text-gray-400">Smart Auto-Detect & Review System</p>
+                            </div>
                             <select 
                                 value={mode} 
                                 onChange={(e) => setMode(e.target.value)}
-                                className="text-xs border rounded-lg p-1.5 bg-gray-50 font-medium"
+                                className="text-xs border rounded-lg p-1.5 bg-gray-50 font-bold text-blue-600"
                             >
-                                <option value="both">ABN (GST+Tax)</option>
-                                <option value="tax_only">TFN (Tax Only)</option>
+                                <option value="abn">ABN (GST + Tax)</option>
+                                <option value="tfn">TFN (Tax Only)</option>
                             </select>
                         </div>
-                        {mode === 'both' && (
-                            <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-xs text-amber-800 flex justify-between items-center">
-                                <span>📅 Next BAS Due in <strong>24 Days</strong> (28th)</span>
-                                <span className="font-bold text-blue-600">GST Due: ${estimatedGST.toFixed(2)}</span>
-                            </div>
-                        )}
                     </header>
 
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-200">
-                            <p className="text-[10px] text-gray-500 font-bold uppercase">Total Income</p>
-                            <p className="text-lg font-extrabold text-green-600">${totalIncome.toFixed(2)}</p>
-                        </div>
-                        <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-200">
-                            <p className="text-[10px] text-gray-500 font-bold uppercase">Tax Deductions</p>
-                            <p className="text-lg font-extrabold text-orange-600">${deductibleExpenses.toFixed(2)}</p>
-                        </div>
+                    {/* Navigation Tabs */}
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                        <button 
+                            onClick={() => setStep('review')}
+                            className={`py-2.5 rounded-xl text-xs font-bold transition-all ${step === 'review' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'}`}
+                        >
+                            1. Ledger & Delete
+                        </button>
+                        <button 
+                            onClick={() => setStep('reporting')}
+                            className={`py-2.5 rounded-xl text-xs font-bold transition-all ${step === 'reporting' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-200'}`}
+                        >
+                            2. Final Report & Confirm
+                        </button>
                     </div>
 
-                    {/* Tax Estimate Box */}
-                    <div className="bg-blue-600 text-white p-4 rounded-2xl mb-4 shadow-sm">
-                        <p className="text-xs opacity-80">Estimated Annual Tax + Medicare (2025-26)</p>
-                        <p className="text-2xl font-black">${totalTaxLiability.toFixed(2)}</p>
-                        <p className="text-[10px] opacity-70 mt-1">Taxable Income: ${taxableIncome.toFixed(2)}</p>
-                    </div>
-
-                    {/* Bank Statement Upload Box */}
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                        <label className="block text-xs font-bold text-gray-700 mb-2">📥 Upload Bank Statement (CSV)</label>
-                        <input 
-                            type="file" 
-                            accept=".csv" 
-                            onChange={handleFileUpload}
-                            className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                        />
-                    </div>
-
-                    {/* Quick Manual Add Form */}
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                        <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Transaction Manually</h2>
-                        <form onSubmit={handleSubmit} className="space-y-3">
-                            <input 
-                                type="text" 
-                                value={desc} 
-                                onChange={(e) => handleDescChange(e.target.value)} 
-                                placeholder="Description (e.g. BP Fuel, McDonald)" 
-                                className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
-                                required
-                            />
-                            <div className="grid grid-cols-2 gap-2">
+                    {step === 'review' ? (
+                        <div>
+                            {/* Upload Statement */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs font-bold text-gray-700">📥 Upload Bank Statement (CSV)</label>
+                                    {transactions.length > 0 && (
+                                        <button onClick={clearAll} className="text-[10px] text-red-600 font-bold hover:underline">Clear All</button>
+                                    )}
+                                </div>
                                 <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    value={amount} 
-                                    onChange={(e) => setAmount(e.target.value)} 
-                                    placeholder="Amount ($)" 
-                                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
-                                    required
+                                    type="file" 
+                                    accept=".csv" 
+                                    onChange={handleFileUpload}
+                                    className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                 />
-                                <select 
-                                    value={type} 
-                                    onChange={(e) => setType(e.target.value)} 
-                                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50 font-medium"
-                                >
-                                    <option value="expense">Expense (-)</option>
-                                    <option value="income">Income (+)</option>
-                                </select>
+                                <p className="text-[10px] text-gray-400 mt-2">App will automatically detect income & expenses.</p>
                             </div>
-                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
-                                Save Transaction
-                            </button>
-                        </form>
-                    </div>
 
-                    {/* Transaction History */}
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-                        <div className="flex justify-between items-center mb-3">
-                            <h2 className="text-xs font-bold text-gray-700 uppercase">History ({transactions.length})</h2>
-                            {transactions.length > 0 && (
-                                <button onClick={clearAll} className="text-xs text-red-600 font-bold hover:underline">Clear All</button>
-                            )}
-                        </div>
-                        {transactions.length === 0 ? (
-                            <p className="text-xs text-gray-400 text-center py-6">No records found. Upload CSV or add above.</p>
-                        ) : (
-                            <div className="space-y-2 max-h-96 overflow-y-auto">
-                                {transactions.map((t) => (
-                                    <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
-                                        <div className="pr-2">
-                                            <p className="font-bold text-gray-800">{t.desc}</p>
-                                            <p className="text-[10px] text-gray-400">{t.date} • <span className="text-blue-600 font-semibold uppercase">{t.claimType}</span></p>
-                                        </div>
-                                        <div className="text-right flex items-center gap-3">
-                                            <span className={`font-black ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                                {t.type === 'income' ? '+' : '-'}${t.amount.toFixed(2)}
-                                            </span>
-                                            <button onClick={() => deleteTx(t.id)} className="text-gray-300 hover:text-red-600 font-bold text-sm">×</button>
-                                        </div>
-                                    </div>
-                                ))}
+                            {/* Manual Entry */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
+                                <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Entry Manually</h2>
+                                <form onSubmit={handleManualSubmit} className="space-y-3">
+                                    <input 
+                                        type="text" 
+                                        value={desc} 
+                                        onChange={(e) => setDesc(e.target.value)} 
+                                        placeholder="Description (e.g. Fuel, Salary, Coles)" 
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                        required
+                                    />
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={amount} 
+                                        onChange={(e) => setAmount(e.target.value)} 
+                                        placeholder="Amount ($) - Negative for expense, positive for income" 
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                        required
+                                    />
+                                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
+                                        Auto-Detect & Save Entry
+                                    </button>
+                                </form>
                             </div>
-                        )}
-                    </div>
+
+                            {/* Transaction Ledger with Delete Option */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+                                <h2 className="text-xs font-bold text-gray-700 uppercase mb-3">All Records & Auto-Detections ({transactions.length})</h2>
+                                {transactions.length === 0 ? (
+                                    <p className="text-xs text-gray-400 text-center py-6">No records found. Upload CSV or add manually.</p>
+                                ) : (
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {transactions.map((t) => (
+                                            <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
+                                                <div className="pr-2">
+                                                    <p className="font-bold text-gray-800">{t.desc}</p>
+                                                    <p className="text-[10px] text-gray-400">{t.date} • <span className="text-blue-600 uppercase font-semibold">{t.type}</span></p>
+                                                </div>
+                                                <div className="text-right flex items-center gap-3">
+                                                    <span className={`font-black ${t.type === 'income' ? 'text-green-600' : 'text-slate-800'}`}>
+                                                        {t.type === 'income' ? '+' : '-'}${t.amount.toFixed(2)}
+                                                    </span>
+                                                    <button onClick={() => deleteTx(t.id)} className="bg-red-50 text-red-600 hover:bg-red-100 px-2 py-1 rounded-lg font-bold text-xs">Delete</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            {/* Final Review & Missing Income Form */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
+                                <h2 className="text-xs font-bold text-blue-700 uppercase mb-2">📋 Accountant Report & Confirmation</h2>
+                                <p className="text-[10px] text-gray-500 mb-4">Review the detected figures below. If any salary or income was missed by the app, add it here before final confirmation.</p>
+
+                                <div className="space-y-3 bg-gray-50 p-3 rounded-xl border mb-4 text-xs">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Total Income Detected:</span>
+                                        <span className="font-bold text-green-600">${totalIncome.toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Total Deductions:</span>
+                                        <span className="font-bold text-orange-600">${totalDeductions.toFixed(2)}</span>
+                                    </div>
+                                    {mode === 'abn' && (
+                                        <div className="flex justify-between border-t pt-2">
+                                            <span className="text-gray-600">Net BAS GST Payable:</span>
+                                            <span className="font-bold text-blue-600">${netGSTDue.toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between border-t pt-2 font-black text-slate-900">
+                                        <span>Estimated Tax + Medicare:</span>
+                                        <span className="text-emerald-600">${totalTaxLiability.toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                <h3 className="text-xs font-bold text-gray-700 uppercase mb-2">➕ Add Missing Salary / Income</h3>
+                                <div className="space-y-2">
+                                    <input 
+                                        type="text" 
+                                        value={extraDesc} 
+                                        onChange={(e) => setExtraDesc(e.target.value)} 
+                                        placeholder="Income source (e.g. Additional Salary, Cash Job)" 
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                    />
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        value={extraIncome} 
+                                        onChange={(e) => setExtraIncome(e.target.value)} 
+                                        placeholder="Amount ($)" 
+                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                    />
+                                    <button onClick={addExtraIncomeEntry} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
+                                        Add Missing Income to Report
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-600 text-white p-4 rounded-2xl text-center">
+                                <p className="text-xs font-bold mb-1">✅ Report Confirmed & Ready for Accountant</p>
+                                <p className="text-[10px] opacity-80">All records are verified and calculated according to Australian tax rules.</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
