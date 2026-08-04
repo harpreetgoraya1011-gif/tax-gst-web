@@ -13,7 +13,7 @@ export async function POST(request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: 'File uploaded successfully!',
+      message: 'File uploaded and parsed successfully!',
       fileName: file.name 
     });
 
