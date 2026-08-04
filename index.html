@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Maasa Accountant Ledger & Tax Workspace</title>
+    <title>Maasa Accountant Workspace - Clean Ledger</title>
     <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
@@ -14,30 +14,39 @@
 
     <script type="text/babel">
         function App() {
+            // Using a brand new storage key to completely avoid old corrupted cached data
             const [transactions, setTransactions] = React.useState(() => {
-                const saved = localStorage.getItem('maasa_pro_ledger_v4');
+                const saved = localStorage.getItem('maasa_clean_ledger_v5');
                 return saved ? JSON.parse(saved) : [];
             });
             
             const [mode, setMode] = React.useState('abn');
             const [desc, setDesc] = React.useState('');
             const [amount, setAmount] = React.useState('');
-            const [step, setStep] = React.useState('review'); // review or reporting
+            const [step, setStep] = React.useState('review'); 
 
-            // Extra Manual Income/Expense for Review step
             const [extraIncome, setExtraIncome] = React.useState('');
             const [extraDesc, setExtraDesc] = React.useState('');
 
             React.useEffect(() => {
-                localStorage.setItem('maasa_pro_ledger_v4', JSON.stringify(transactions));
+                localStorage.setItem('maasa_clean_ledger_v5', JSON.stringify(transactions));
             }, [transactions]);
+
+            // Hard Reset / Wipe Everything Instantly
+            const hardResetLedger = () => {
+                if (confirm('⚠️ Warning: This will instantly wipe all records and reset everything to $0.00. Proceed?')) {
+                    setTransactions([]);
+                    localStorage.removeItem('maasa_clean_ledger_v5');
+                    localStorage.clear();
+                    window.location.reload();
+                }
+            };
 
             const handleManualSubmit = (e) => {
                 e.preventDefault();
                 if (!desc || !amount) return;
 
                 const numAmt = parseFloat(amount);
-                // Smart auto-detection based on description keywords
                 const lowerDesc = desc.toLowerCase();
                 const isInc = lowerDesc.includes('salary') || lowerDesc.includes('income') || lowerDesc.includes('uber') || lowerDesc.includes('amazon') || lowerDesc.includes('credit') || lowerDesc.includes('payout');
 
@@ -46,7 +55,7 @@
                     desc,
                     amount: Math.abs(numAmt),
                     type: isInc ? 'income' : 'expense',
-                    gstCode: isInc ? 'GST' : 'GST',
+                    gstCode: 'GST',
                     date: new Date().toISOString().split('T')[0],
                     source: 'manual'
                 };
@@ -58,12 +67,6 @@
 
             const deleteTx = (id) => {
                 setTransactions(transactions.filter(t => t.id !== id));
-            };
-
-            const clearAll = () => {
-                if (confirm('Are you sure you want to clear all ledger records?')) {
-                    setTransactions([]);
-                }
             };
 
             const addExtraIncomeEntry = () => {
@@ -82,7 +85,6 @@
                 setExtraDesc('');
             };
 
-            // Bank Statement Parser with Auto-Detection & Delete capability
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -146,7 +148,7 @@
 
                     if (newTxs.length > 0) {
                         setTransactions(prev => [...newTxs, ...prev]);
-                        alert(`Successfully auto-detected and imported ${newTxs.length} records! Review them below.`);
+                        alert(`Successfully imported ${newTxs.length} clean records!`);
                     } else {
                         alert('Could not parse statement structure.');
                     }
@@ -154,7 +156,6 @@
                 reader.readAsText(file);
             };
 
-            // Calculations
             const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
             const expenses = transactions.filter(t => t.type === 'expense');
             const totalGSTCollected = totalIncome / 11;
@@ -179,25 +180,31 @@
 
             return (
                 <div className="max-w-md mx-auto p-3 sm:p-4 font-sans">
-                    {/* Header */}
                     <header className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
                         <div className="flex justify-between items-center mb-2">
                             <div>
                                 <h1 className="text-sm font-black text-blue-700">Maasa Accountant Workspace</h1>
-                                <p className="text-[10px] text-gray-400">Smart Auto-Detect & Review System</p>
+                                <p className="text-[10px] text-gray-400">Clean Ledger & Reset System</p>
                             </div>
-                            <select 
-                                value={mode} 
-                                onChange={(e) => setMode(e.target.value)}
-                                className="text-xs border rounded-lg p-1.5 bg-gray-50 font-bold text-blue-600"
-                            >
-                                <option value="abn">ABN (GST + Tax)</option>
-                                <option value="tfn">TFN (Tax Only)</option>
-                            </select>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={hardResetLedger} 
+                                    className="bg-red-600 hover:bg-red-700 text-white font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm"
+                                >
+                                    Wipe All ($0)
+                                </button>
+                                <select 
+                                    value={mode} 
+                                    onChange={(e) => setMode(e.target.value)}
+                                    className="text-xs border rounded-lg p-1.5 bg-gray-50 font-bold text-blue-600"
+                                >
+                                    <option value="abn">ABN</option>
+                                    <option value="tfn">TFN</option>
+                                </select>
+                            </div>
                         </div>
                     </header>
 
-                    {/* Navigation Tabs */}
                     <div className="grid grid-cols-2 gap-2 mb-4">
                         <button 
                             onClick={() => setStep('review')}
@@ -215,24 +222,16 @@
 
                     {step === 'review' ? (
                         <div>
-                            {/* Upload Statement */}
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="text-xs font-bold text-gray-700">📥 Upload Bank Statement (CSV)</label>
-                                    {transactions.length > 0 && (
-                                        <button onClick={clearAll} className="text-[10px] text-red-600 font-bold hover:underline">Clear All</button>
-                                    )}
-                                </div>
+                                <label className="block text-xs font-bold text-gray-700 mb-2">📥 Upload Bank Statement (CSV)</label>
                                 <input 
                                     type="file" 
                                     accept=".csv" 
                                     onChange={handleFileUpload}
                                     className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                 />
-                                <p className="text-[10px] text-gray-400 mt-2">App will automatically detect income & expenses.</p>
                             </div>
 
-                            {/* Manual Entry */}
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
                                 <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Entry Manually</h2>
                                 <form onSubmit={handleManualSubmit} className="space-y-3">
@@ -249,21 +248,25 @@
                                         step="0.01" 
                                         value={amount} 
                                         onChange={(e) => setAmount(e.target.value)} 
-                                        placeholder="Amount ($) - Negative for expense, positive for income" 
+                                        placeholder="Amount ($)" 
                                         className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
                                         required
                                     />
                                     <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
-                                        Auto-Detect & Save Entry
+                                        Save Entry
                                     </button>
                                 </form>
                             </div>
 
-                            {/* Transaction Ledger with Delete Option */}
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-                                <h2 className="text-xs font-bold text-gray-700 uppercase mb-3">All Records & Auto-Detections ({transactions.length})</h2>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h2 className="text-xs font-bold text-gray-700 uppercase">Records ({transactions.length})</h2>
+                                    {transactions.length > 0 && (
+                                        <button onClick={hardResetLedger} className="text-xs text-red-600 font-bold hover:underline">Clear All</button>
+                                    )}
+                                </div>
                                 {transactions.length === 0 ? (
-                                    <p className="text-xs text-gray-400 text-center py-6">No records found. Upload CSV or add manually.</p>
+                                    <p className="text-xs text-gray-400 text-center py-6">Ledger is empty ($0.00). Upload CSV or add records.</p>
                                 ) : (
                                     <div className="space-y-2 max-h-96 overflow-y-auto">
                                         {transactions.map((t) => (
@@ -286,14 +289,11 @@
                         </div>
                     ) : (
                         <div>
-                            {/* Final Review & Missing Income Form */}
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
-                                <h2 className="text-xs font-bold text-blue-700 uppercase mb-2">📋 Accountant Report & Confirmation</h2>
-                                <p className="text-[10px] text-gray-500 mb-4">Review the detected figures below. If any salary or income was missed by the app, add it here before final confirmation.</p>
-
+                                <h2 className="text-xs font-bold text-blue-700 uppercase mb-2">📋 Accountant Report</h2>
                                 <div className="space-y-3 bg-gray-50 p-3 rounded-xl border mb-4 text-xs">
                                     <div className="flex justify-between">
-                                        <span className="text-gray-600">Total Income Detected:</span>
+                                        <span className="text-gray-600">Total Income:</span>
                                         <span className="font-bold text-green-600">${totalIncome.toFixed(2)}</span>
                                     </div>
                                     <div className="flex justify-between">
@@ -318,8 +318,8 @@
                                         type="text" 
                                         value={extraDesc} 
                                         onChange={(e) => setExtraDesc(e.target.value)} 
-                                        placeholder="Income source (e.g. Additional Salary, Cash Job)" 
-                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                        placeholder="Income source (e.g. Additional Salary)" 
+                                        className="w-full border rounded-xl p.5 text-xs bg-gray-50 p-2.5"
                                     />
                                     <input 
                                         type="number" 
@@ -327,17 +327,12 @@
                                         value={extraIncome} 
                                         onChange={(e) => setExtraIncome(e.target.value)} 
                                         placeholder="Amount ($)" 
-                                        className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                        className="w-full border rounded-xl p.5 text-xs bg-gray-50 p-2.5"
                                     />
                                     <button onClick={addExtraIncomeEntry} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
-                                        Add Missing Income to Report
+                                        Add Missing Income
                                     </button>
                                 </div>
-                            </div>
-
-                            <div className="bg-blue-600 text-white p-4 rounded-2xl text-center">
-                                <p className="text-xs font-bold mb-1">✅ Report Confirmed & Ready for Accountant</p>
-                                <p className="text-[10px] opacity-80">All records are verified and calculated according to Australian tax rules.</p>
                             </div>
                         </div>
                     )}
