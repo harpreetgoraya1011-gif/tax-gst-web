@@ -15,21 +15,20 @@
     <script type="text/babel">
         function App() {
             const [transactions, setTransactions] = React.useState(() => {
-                const saved = localStorage.getItem('tax_tracker_txs_mob');
+                const saved = localStorage.getItem('tax_tracker_txs_mob_v2');
                 return saved ? JSON.parse(saved) : [];
             });
             
-            const [mode, setMode] = React.useState('both'); // 'both' or 'tax_only'
+            const [mode, setMode] = React.useState('both'); 
             const [desc, setDesc] = React.useState('');
             const [amount, setAmount] = React.useState('');
             const [type, setType] = React.useState('expense'); 
             const [claimType, setClaimType] = React.useState('both');
 
             React.useEffect(() => {
-                localStorage.setItem('tax_tracker_txs_mob', JSON.stringify(transactions));
+                localStorage.setItem('tax_tracker_txs_mob_v2', JSON.stringify(transactions));
             }, [transactions]);
 
-            // Smart Auto-Detection
             const handleDescChange = (val) => {
                 setDesc(val);
                 const lower = val.toLowerCase();
@@ -68,7 +67,13 @@
                 setTransactions(transactions.filter(t => t.id !== id));
             };
 
-            // CSV File Upload Handler (Bank Statement simulation)
+            const clearAll = () => {
+                if (confirm('Are you sure you want to clear all records?')) {
+                    setTransactions([]);
+                }
+            };
+
+            // Smart Bank CSV Parser (Handles ANZ, CommBank, NAB formats)
             const handleFileUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -80,31 +85,64 @@
                     const newTxs = [];
 
                     lines.forEach((line, index) => {
-                        if (index === 0 || !line.trim()) return; // Skip header
-                        const cols = line.split(',');
-                        if (cols.length >= 2) {
-                            const description = cols[0].replace(/['"]+/g, '').trim();
-                            const amtVal = parseFloat(cols[1].replace(/['"]+/g, '').trim());
-                            
-                            if (!isNaN(amtVal)) {
-                                const isInc = amtVal > 0 && (description.toLowerCase().includes('salary') || description.toLowerCase().includes('income') || description.toLowerCase().includes('deposit'));
-                                newTxs.push({
-                                    id: Date.now() + index,
-                                    desc: description || 'Bank Transaction',
-                                    amount: Math.abs(amtVal),
-                                    type: isInc ? 'income' : 'expense',
-                                    claimType: isInc ? 'income' : 'both',
-                                    date: new Date().toISOString().split('T')[0]
-                                });
+                        if (!line.trim()) return;
+                        
+                        // Basic CSV split considering quotes
+                        const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/['"]+/g, '').trim());
+                        
+                        if (cols.length < 2) return;
+
+                        // Try to find which column is Amount and which is Description
+                        let foundAmount = null;
+                        let foundDesc = '';
+                        let foundDate = new Date().toISOString().split('T')[0];
+
+                        cols.forEach((col, cIdx) => {
+                            // Check if column looks like a number (Amount)
+                            const cleanNum = parseFloat(col.replace('$', '').replace(',', ''));
+                            if (!isNaN(cleanNum) && (col.includes('.') || Math.abs(cleanNum) > 0)) {
+                                if (foundAmount === null && cIdx > 0) {
+                                    foundAmount = cleanNum;
+                                }
+                            } else if (col.length > 3 && !col.match(/^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$/)) {
+                                if (!foundDesc) foundDesc = col;
+                            } else if (col.match(/^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}$/)) {
+                                foundDate = col;
                             }
+                        });
+
+                        // Fallback if structured standard ANZ (Date, Amount, Desc)
+                        if (foundAmount === null && cols.length >= 2) {
+                            const possibleAmt = parseFloat(cols[1]);
+                            if (!isNaN(possibleAmt)) {
+                                foundAmount = possibleAmt;
+                                foundDesc = cols[2] || cols[0];
+                            }
+                        }
+
+                        if (foundAmount !== null && !isNaN(foundAmount)) {
+                            // Skip header row if text contains "amount" or "date"
+                            if (foundDesc.toLowerCase().includes('amount') || foundDesc.toLowerCase().includes('description')) return;
+
+                            const isInc = foundAmount > 0 && (foundDesc.toLowerCase().includes('salary') || foundDesc.toLowerCase().includes('income') || foundDesc.toLowerCase().includes('credit'));
+                            const isPersonal = foundDesc.toLowerCase().includes('mcdonald') || foundDesc.toLowerCase().includes('coles') || foundDesc.toLowerCase().includes('woolworths');
+
+                            newTxs.push({
+                                id: Date.now() + index,
+                                desc: foundDesc || 'Bank Transaction',
+                                amount: Math.abs(foundAmount),
+                                type: foundAmount < 0 ? 'expense' : (isInc ? 'income' : 'expense'),
+                                claimType: foundAmount < 0 ? (isPersonal ? 'personal' : 'both') : 'income',
+                                date: foundDate
+                            });
                         }
                     });
 
                     if (newTxs.length > 0) {
                         setTransactions(prev => [...newTxs, ...prev]);
-                        alert(`Successfully imported ${newTxs.length} transactions from bank file!`);
+                        alert(`Successfully imported ${newTxs.length} clean transactions!`);
                     } else {
-                        alert('Could not parse transactions. Please ensure CSV format is: Description, Amount');
+                        alert('Could not read bank statement format. Please check the CSV file.');
                     }
                 };
                 reader.readAsText(file);
@@ -112,7 +150,7 @@
 
             // Calculations
             const totalIncome = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-            const expenses = transactions.filter(t => t.type === 'expense');
+            const expenses = transactions.filter(t => t.type === 'expense' && t.claimType !== 'personal');
 
             const gstEligibleExpenses = expenses.filter(t => t.claimType === 'both').reduce((acc, t) => acc + t.amount, 0);
             const estimatedGST = gstEligibleExpenses / 11; 
@@ -139,12 +177,6 @@
             const medicareLevy = taxableIncome * 0.02;
             const totalTaxLiability = estimatedTax + medicareLevy;
 
-            // BAS Due Date simulation (e.g. 28th of next month)
-            const today = new Date();
-            const currentMonth = today.getMonth(); // 0-11
-            // Let's set next BAS due date to 28th of coming month
-            const dueDaysLeft = 28 - today.getDate() + (today.getDate() > 28 ? 30 : 0);
-
             return (
                 <div className="max-w-md mx-auto p-3 sm:p-4">
                     {/* Header */}
@@ -160,10 +192,9 @@
                                 <option value="tax_only">TFN (Tax Only)</option>
                             </select>
                         </div>
-                        {/* BAS Alert Banner */}
                         {mode === 'both' && (
                             <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-xs text-amber-800 flex justify-between items-center">
-                                <span>📅 Next BAS Due in <strong>{dueDaysLeft} Days</strong> (28th)</span>
+                                <span>📅 Next BAS Due in <strong>24 Days</strong> (28th)</span>
                                 <span className="font-bold text-blue-600">GST Due: ${estimatedGST.toFixed(2)}</span>
                             </div>
                         )}
@@ -197,23 +228,20 @@
                             onChange={handleFileUpload}
                             className="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                         />
-                        <p className="text-[10px] text-gray-400 mt-1">Format: Description, Amount (e.g., BP Fuel, -50.00)</p>
                     </div>
 
                     {/* Quick Manual Add Form */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-4">
                         <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">Add Transaction Manually</h2>
                         <form onSubmit={handleSubmit} className="space-y-3">
-                            <div>
-                                <input 
-                                    type="text" 
-                                    value={desc} 
-                                    onChange={(e) => handleDescChange(e.target.value)} 
-                                    placeholder="Description (e.g. BP Fuel, McDonald)" 
-                                    className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
-                                    required
-                                />
-                            </div>
+                            <input 
+                                type="text" 
+                                value={desc} 
+                                onChange={(e) => handleDescChange(e.target.value)} 
+                                placeholder="Description (e.g. BP Fuel, McDonald)" 
+                                className="w-full border rounded-xl p-2.5 text-xs bg-gray-50"
+                                required
+                            />
                             <div className="grid grid-cols-2 gap-2">
                                 <input 
                                     type="number" 
@@ -233,19 +261,6 @@
                                     <option value="income">Income (+)</option>
                                 </select>
                             </div>
-                            {type === 'expense' && mode === 'both' && (
-                                <div>
-                                    <select 
-                                        value={claimType} 
-                                        onChange={(e) => setClaimType(e.target.value)} 
-                                        className="w-full border rounded-xl p-2.5 text-xs bg-blue-50 font-medium text-blue-900"
-                                    >
-                                        <option value="both">Both (GST + Tax)</option>
-                                        <option value="tax_only">Tax Only (No GST)</option>
-                                        <option value="personal">Personal (Ignored)</option>
-                                    </select>
-                                </div>
-                            )}
                             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl text-xs shadow-sm">
                                 Save Transaction
                             </button>
@@ -254,7 +269,12 @@
 
                     {/* Transaction History */}
                     <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
-                        <h2 className="text-xs font-bold mb-3 text-gray-700 uppercase">History ({transactions.length})</h2>
+                        <div className="flex justify-between items-center mb-3">
+                            <h2 className="text-xs font-bold text-gray-700 uppercase">History ({transactions.length})</h2>
+                            {transactions.length > 0 && (
+                                <button onClick={clearAll} className="text-xs text-red-600 font-bold hover:underline">Clear All</button>
+                            )}
+                        </div>
                         {transactions.length === 0 ? (
                             <p className="text-xs text-gray-400 text-center py-6">No records found. Upload CSV or add above.</p>
                         ) : (
