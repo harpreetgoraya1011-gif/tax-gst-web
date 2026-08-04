@@ -38,16 +38,16 @@ export default function UploadPage() {
   };
 
   return (
-    <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>
-      <h2>Universal File Upload System (CSV, PDF, etc.)</h2>
+    <div style={{ padding: '40px', fontFamily: 'sans-serif', zIndex: 1, position: 'relative' }}>
+      <h2>Universal File Upload System</h2>
       
-      <div style={{ margin: '20px 0' }}>
+      <div style={{ margin: '20px 0', background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #ddd' }}>
         <input 
           type="file" 
           accept="*/*" 
           onChange={handleFileChange} 
           disabled={uploading}
-          style={{ padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}
+          style={{ padding: '15px', border: '2px dashed #0070f3', borderRadius: '5px', fontSize: '16px', width: '100%', cursor: 'pointer' }}
         />
       </div>
 
